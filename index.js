@@ -2,11 +2,16 @@ var burrito = require('burrito')
   , Module  = require('module').Module
   , path    = require('path')
   , read    = require('fs').readFileSync
-  , vm      = require('vm')
+  , EE      = require('events').EventEmitter
+  , now     = require('microtime').now
 
 var ExecutionContext = function() {
-  this.functions = []
+  this.functions  = []
+  this.stackDepth = 0
+  EE.call(this)
 }
+
+ExecutionContext.prototype = new EE
 
 ExecutionContext.prototype.store = function(fn, start, end) {
   fn.__guid &&
@@ -14,44 +19,68 @@ ExecutionContext.prototype.store = function(fn, start, end) {
     this.functions[fn.__guid].invoke(start, end)
 }
 
-var Tap = function(fn) {
+var Tap = function(fn, filename, line) {
   this.tapped_function  = fn
-  this.stack            = (new Error).stack.split('\n')
   this.calls            = []
+  this.filename         = filename
+  this.line             = line
+}
+
+var cache = function(fn) {
+  var ret = function() {
+    this.__cache__ = this.__cache__ || {}
+    return this.__cache__[fn] ?
+           (this.__cache__[fn]) :
+           (this.__cache__[fn] = fn.call(this));
+  }
+  return ret;
 }
 
 Tap.prototype.invoke = function(start, end) {
   this.calls.push({start:start, end:end})
 }
 
+Tap.prototype.min = cache(function() {
+  return Math.min.apply(Math, this.calls.map(function(call) {
+    return call.end-call.start      
+  }))
+})
+
+Tap.prototype.max = cache(function() {
+  return Math.max.apply(Math, this.calls.map(function(call) {
+    return call.end-call.start 
+  }))
+})
+
+Tap.prototype.total = cache(function() {
+  return this.calls.length ?
+      this.calls
+        .map(function(call) { return call.end-call.start })
+        .reduce(function(lhs, rhs) { return lhs + rhs }, 0) :
+      0
+})
+
+Tap.prototype.avg = cache(function() {
+  return this.calls.length ?
+    this.total() / this.calls.length    : 
+    -Infinity
+})
+
+Tap.prototype.source = cache(function() {
+  var data = read(this.filename, 'utf8').split('\n')
+  return data[this.line]
+});
+
 var wrap_code = function(src) {
   return burrito(src, function(node) {
     switch(node.name) {
-      case 'new':
-        var fnsrc = node.source(),
-            fn    = fnsrc.replace(/\(.*\)$/g, '').replace(/new\s*/g, '')
-
-        if((/arguments/g)(fnsrc)) break;
-
-        node.wrap('__call.call(this, '+fn+', function() { return %s; })')
-      break;
-      case 'call':
-        var fnsrc = node.source(),
-            fn    = fnsrc.replace(/(\.apply|\.call)?/g, '').replace(/\(.*\)/g, '')
-
-        if((/arguments/g)(fnsrc)) break;
-        // chained expressions need not apply.
-        if(fnsrc.replace(/\(/g, '').length !== fnsrc.length-1)
-          break;
-
-        if(fn.length === 0)
-          fn = 'IIFE'
-
-        node.wrap('__call.call(this, '+fn+', function() { return %s; })')
-      break;
       case 'function':
         var src = node.source();
-        node.wrap('__decl(%s)')
+        node.wrap(function(str) {
+          str = str.replace('{', '{ var __callop__ = __start(arguments.callee); try {')
+          str = str.replace(/\}$/, ';} finally { __callop__.end() } }') 
+          return '__decl('+str+', __filename, '+node.node[0].start.line+')';
+        })
       break;
       default:
       break;
@@ -60,26 +89,25 @@ var wrap_code = function(src) {
 }
 
 var contribute_to_context = function(context, executionContext) {
-  context.__call = function(fn, execution) {
-    var start = +new Date,
-        result
 
-    try {
-      return execution.call(this)
-    } finally {
-      // a quick primer on `finally`:
-      // `return execution()` is called, but this is
-      // called right after (but before returning to the calling scope!)
-      //
-      // even if the `execution` function raises an error,
-      // we'll still get called -- and since we don't do anything about it
-      // the exception will still travel up the stack as expected.
-      executionContext.store(fn, start, +new Date)
+  context.__start = function(fn) {
+    var start = now(),
+        result
+    executionContext.stackDepth++
+
+    executionContext.functions[fn.__guid] &&
+    executionContext.emit('tap', executionContext.functions[fn.__guid], executionContext)
+
+    return {
+      'end':function() {
+        executionContext.store(fn, start, now())
+        executionContext.stackDepth--
+      }
     }
   }
 
-  context.__decl = function(fn) {
-    fn.__guid = executionContext.functions.push(new Tap(fn))
+  context.__decl = function(fn, filename, lineno) {
+    fn.__guid = executionContext.functions.push(new Tap(fn, filename, lineno))
     return fn
   }
 
@@ -117,16 +145,60 @@ var node_environment = function(context, module, filename) {
     return context;
 };
 
-module.exports = function() {
+var helpers = {
+  sortby:{
+        calls:function(next, lhs, rhs) {
+          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+          if(lhs.calls.length < rhs.calls.length) return 1;
+          if(lhs.calls.length > rhs.calls.length) return -1;
+          return next(lhs, rhs);
+        }
+      , min:function(next, lhs, rhs) {
+          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+          if(lhs.min() < rhs.min()) return 1;
+          if(lhs.min() > rhs.min()) return -1;
+          return next(lhs, rhs);
+        }
+      , max:function(next, lhs, rhs) {
+          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+          if(lhs.max() < rhs.max()) return 1;
+          if(lhs.max() > rhs.max()) return -1;
+          return next(lhs, rhs);
+        }
+      , avg:function(next, lhs, rhs) {
+          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+          if(lhs.avg() < rhs.avg()) return 1;
+          if(lhs.avg() > rhs.avg()) return -1;
+          return next(lhs, rhs);
+        }
+      , total:function(next, lhs, rhs) {
+          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+          if(lhs.total() < rhs.total()) return 1;
+          if(lhs.total() > rhs.total()) return -1;
+          return next(lhs, rhs);
+        }
+    }
+}
+
+module.exports = function(match) {
   var original_require  = require.extensions['.js']
     , execution_context = new ExecutionContext
     , context           = contribute_to_context({}, execution_context)
 
+  match = typeof match === 'string' ?
+            new RegExp(match.replace(/\//g, '\\/').replace(/\./g, '\\.')) :
+          match === undefined ?
+            /.*/g                                                         :
+            match
+
   require.extensions['.js'] = function(module, filename) {
+    if(!match.test(filename))
+      return original_require(module, filename)
+
     var module_context = {}
       , src            = wrap_code(read(filename, 'utf8'))
       , wrapper        = function(s) { 
-        return 'return (function(ctxt) { return (function(__call, __decl) { return '+s+'; })(ctxt.__call, ctxt.__decl); })' 
+        return 'return (function(ctxt) { return (function(__start, __decl) { return '+s+'; })(ctxt.__start, ctxt.__decl); })' 
       };
 
     node_environment(module_context, module, filename)
@@ -147,10 +219,13 @@ module.exports = function() {
   }
 
   var complete = function(fn) {
-    fn(execution_context.functions.slice())
+    fn(execution_context.functions.slice(), helpers)
   }
   complete.release = function() {
     require.extensions['.js'] = original_require
+  }
+  complete.on   = function(what, fn) {
+    execution_context.on(what, fn)
   }
   return complete
 }
