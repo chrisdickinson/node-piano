@@ -152,32 +152,30 @@ var node_environment = function(context, module, filename) {
 };
 
 var helpers = {
-  sortby:{
-        calls:function(lhs, rhs) {
-          if(lhs.calls.length < rhs.calls.length) return 1;
-          if(lhs.calls.length > rhs.calls.length) return -1;
-          return 0
-        }
-      , min:function(lhs, rhs) {
-          if(lhs.min() < rhs.min()) return 1;
-          if(lhs.min() > rhs.min()) return -1;
-          return 0
-        }
-      , max:function(lhs, rhs) {
-          if(lhs.max() < rhs.max()) return 1;
-          if(lhs.max() > rhs.max()) return -1;
-          return 0
-        }
-      , avg:function(lhs, rhs) {
-          if(lhs.avg() < rhs.avg()) return 1;
-          if(lhs.avg() > rhs.avg()) return -1;
-          return 0
-        }
-      , total:function(lhs, rhs) {
-          if(lhs.total() < rhs.total()) return 1;
-          if(lhs.total() > rhs.total()) return -1;
-          return 0
-        }
+    calls:function(lhs, rhs) {
+      if(lhs.calls.length < rhs.calls.length) return 1;
+      if(lhs.calls.length > rhs.calls.length) return -1;
+      return 0
+    }
+  , min:function(lhs, rhs) {
+      if(lhs.min() < rhs.min()) return 1;
+      if(lhs.min() > rhs.min()) return -1;
+      return 0
+    }
+  , max:function(lhs, rhs) {
+      if(lhs.max() < rhs.max()) return 1;
+      if(lhs.max() > rhs.max()) return -1;
+      return 0
+    }
+  , avg:function(lhs, rhs) {
+      if(lhs.avg() < rhs.avg()) return 1;
+      if(lhs.avg() > rhs.avg()) return -1;
+      return 0
+    }
+  , total:function(lhs, rhs) {
+      if(lhs.total() < rhs.total()) return 1;
+      if(lhs.total() > rhs.total()) return -1;
+      return 0
     }
 }
 

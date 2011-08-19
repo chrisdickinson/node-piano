@@ -1,0 +1,28 @@
+{
+    "name" : "piano",
+    "version" : "0.0.1",
+    "description" : "require-hook for instrumenting your code",
+    "main" : "index.js",
+    "directories" : {
+        "lib" : "."
+    },
+    "dependencies" : {
+        "burrito" : "0.X.X",
+        "microtime" : "0.X.X"
+    },
+    "repository" : {
+        "type" : "git",
+        "url" : "http://github.com/chrisdickinson/node-piano.git"
+    },
+    "keywords" : [
+        "instrumentation",
+        "callgraph"
+    ],
+    "author" : {
+        "name" : "Chris Dickinson",
+        "email" : "chris@neversaw.us",
+        "url" : "http://neversaw.us"
+    },
+    "license" : "MIT",
+    "engine" : { "node" : ">=0.4" }
+}
