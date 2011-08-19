@@ -7,6 +7,7 @@ var burrito = require('burrito')
 
 var ExecutionContext = function() {
   this.functions  = []
+  this.guids      = {}
   this.stackDepth = 0
   EE.call(this)
 }
@@ -107,7 +108,12 @@ var contribute_to_context = function(context, executionContext) {
   }
 
   context.__decl = function(fn, filename, lineno) {
-    fn.__guid = executionContext.functions.push(new Tap(fn, filename, lineno))
+    var key = fn+''+filename+lineno;
+    if(!executionContext.guids[key]) {
+      executionContext.guids[key] = fn.__guid = executionContext.functions.push(new Tap(fn, filename, lineno))
+    } else {
+      fn.__guid = executionContext.guids[key]
+    }
     return fn
   }
 
@@ -147,35 +153,30 @@ var node_environment = function(context, module, filename) {
 
 var helpers = {
   sortby:{
-        calls:function(next, lhs, rhs) {
-          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+        calls:function(lhs, rhs) {
           if(lhs.calls.length < rhs.calls.length) return 1;
           if(lhs.calls.length > rhs.calls.length) return -1;
-          return next(lhs, rhs);
+          return 0
         }
-      , min:function(next, lhs, rhs) {
-          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+      , min:function(lhs, rhs) {
           if(lhs.min() < rhs.min()) return 1;
           if(lhs.min() > rhs.min()) return -1;
-          return next(lhs, rhs);
+          return 0
         }
-      , max:function(next, lhs, rhs) {
-          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+      , max:function(lhs, rhs) {
           if(lhs.max() < rhs.max()) return 1;
           if(lhs.max() > rhs.max()) return -1;
-          return next(lhs, rhs);
+          return 0
         }
-      , avg:function(next, lhs, rhs) {
-          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+      , avg:function(lhs, rhs) {
           if(lhs.avg() < rhs.avg()) return 1;
           if(lhs.avg() > rhs.avg()) return -1;
-          return next(lhs, rhs);
+          return 0
         }
-      , total:function(next, lhs, rhs) {
-          rhs === undefined && (rhs = lhs, lhs = next, next = function() { return 0; });
+      , total:function(lhs, rhs) {
           if(lhs.total() < rhs.total()) return 1;
           if(lhs.total() > rhs.total()) return -1;
-          return next(lhs, rhs);
+          return 0
         }
     }
 }
